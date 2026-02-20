@@ -91,7 +91,7 @@ canvas { margin-top:20px; }
     <option>November</option><option>December</option>
   </select>
 
-  <input type="number" id="year" placeholder="Year">
+  <input type="number" id="year" placeholder="Year (4-digit)">
   <select id="mode">
     <option value="">Transport Mode</option>
     <option value="0.21">Car</option>
@@ -147,22 +147,24 @@ function showScreen(id){
 
 function calculate(){
   const month = document.getElementById("month").value;
-  const year = parseInt(document.getElementById("year").value);
+  let year = parseInt(document.getElementById("year").value);
   const mode = parseFloat(document.getElementById("mode").value);
   let distance = parseFloat(document.getElementById("distance").value);
   let electricity = parseFloat(document.getElementById("electricity").value);
   const errorBox = document.getElementById("error"); 
   errorBox.innerHTML="";
 
-  if(!month || !year || !mode || isNaN(distance) || isNaN(electricity)){
-    errorBox.innerHTML="All fields required and must be numeric.";
-    return;
+  const currentYear = new Date().getFullYear();
+
+  // YEAR VALIDATION
+  if(!year || isNaN(year) || year < 2000 || year > currentYear || year.toString().length !== 4){
+      errorBox.innerHTML = `❌ Enter a valid 4-digit year between 2000 and ${currentYear}.`;
+      return;
   }
 
-  const currentYear = new Date().getFullYear();
-  if (year > currentYear) {
-      errorBox.innerHTML = `❌ Year cannot be in the future. Current year is ${currentYear}.`;
-      return;
+  if(!month || !mode || isNaN(distance) || isNaN(electricity)){
+    errorBox.innerHTML="All fields required and must be numeric.";
+    return;
   }
 
   if(distance<0 || electricity<0){ 
