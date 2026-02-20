@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EcoTrack App</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+body {
+  margin:0;
+  font-family: 'Segoe UI', sans-serif;
+  background: linear-gradient(135deg,#43cea2,#185a9d);
+  background-size: 400% 400%;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  height:100vh;
+  animation: gradientBG 15s ease infinite;
+}
+@keyframes gradientBG {
+  0%{background-position:0% 50%;}
+  50%{background-position:100% 50%;}
+  100%{background-position:0% 50%;}
+}
+.app {
+  width: 380px;
+  height: 700px;
+  background:white;
+  border-radius:25px;
+  overflow:hidden;
+  box-shadow:0 10px 40px rgba(0,0,0,0.3);
+  position:relative;
+  padding:20px;
+  box-sizing:border-box;
+}
+.screen { display:none; overflow-y:auto; height:100%; }
+.active { display:block; }
+h1,h2 { text-align:center; margin-bottom:20px; }
+input,select { width:100%; padding:10px; margin-top:10px; border-radius:8px; border:1px solid #ccc; }
+button { width:100%; padding:12px; border:none; border-radius:10px; margin-top:10px; font-weight:bold; cursor:pointer; transition:0.3s; }
+button.primary { background:#43cea2; color:white; }
+button.secondary { background:#185a9d; color:white; }
+button.primary:hover { background:#2ecc71; transform:scale(1.05);}
+button.secondary:hover { background:#2980b9; transform:scale(1.05);}
+.result-card {
+  padding:20px;
+  border-radius:20px;
+  color:white;
+  margin-top:15px;
+  text-align:center;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+  transition: transform 0.3s;
+}
+.result-card:hover { transform: scale(1.05); }
+.green { background:#2ecc71; }
+.orange { background:#f39c12; }
+.red { background:#e74c3c; }
+.suggestion-box { background:#f4f6f7; padding:12px; border-radius:10px; margin-top:10px; font-size:14px; }
+.center { text-align:center; }
+canvas { margin-top:20px; }
+#downloadBtn { margin-top:15px; background:#ff6347; }
+#downloadBtn:hover { background:#e5533d; transform:scale(1.05);}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+<!-- Welcome Screen -->
+<div class="screen active" id="welcome">
+  <h1 style="font-size:50px;">🌍</h1>
+  <h1>EcoTrack</h1>
+  <p class="center">Track & Reduce Your Carbon Footprint</p>
+  <button class="primary" onclick="showScreen('dashboard')">Get Started</button>
+</div>
+
+<!-- Dashboard Screen -->
+<div class="screen" id="dashboard">
+  <h2>Enter Monthly Data</h2>
+  <select id="month">
+    <option value="">Select Month</option>
+    <option>January</option><option>February</option>
+    <option>March</option><option>April</option>
+    <option>May</option><option>June</option>
+    <option>July</option><option>August</option>
+    <option>September</option><option>October</option>
+    <option>November</option><option>December</option>
+  </select>
+
+  <input type="number" id="year" placeholder="Year">
+  <select id="mode">
+    <option value="">Transport Mode</option>
+    <option value="0.21">Car</option>
+    <option value="0.05">Bike</option>
+    <option value="0.1">Bus</option>
+    <option value="0.04">Train</option>
+    <option value="0.15">Flight</option>
+  </select>
+
+  <input type="text" id="distance" placeholder="Distance (km)">
+  <input type="text" id="electricity" placeholder="Electricity (kWh)">
+  <div id="error" style="color:red;font-size:13px;"></div>
+  <button class="secondary" onclick="calculate()">Calculate</button>
+</div>
+
+<!-- Result Screen -->
+<div class="screen" id="resultScreen">
+  <h2>Your Results</h2>
+  <div id="reportContent">
+    <div id="resultCard" class="result-card"></div>
+    <div id="progress" class="suggestion-box"></div>
+    <div id="suggestions" class="suggestion-box"></div>
+    <canvas id="chart"></canvas>
+    <canvas id="trendChart"></canvas>
+  </div>
+  <button id="downloadBtn" onclick="downloadReport()">Download & Share PDF</button>
+  <button class="primary" onclick="showScreen('compareScreen')">Compare with Friend</button>
+  <button class="primary" onclick="showScreen('dashboard')">Back</button>
+</div>
+
+<!-- Compare Page -->
+<div class="screen" id="compareScreen">
+  <h2>Compare with Friend</h2>
+  <p>Share this link with a friend to compare your CO₂:</p>
+  <input type="text" id="shareableLink" readonly style="width:100%; padding:10px; margin-bottom:10px;"/>
+  <p>Or enter friend's CO₂ (kg) to compare:</p>
+  <input type="number" id="friendCO2" placeholder="Friend's CO₂ (kg)">
+  <button class="secondary" onclick="compareWithFriend()">Compare</button>
+  <div id="compareResult" class="suggestion-box"></div>
+  <button class="primary" onclick="showScreen('resultScreen')">Back</button>
+</div>
+
+</div>
+
+<script>
+let previousTotal = 0;
+let chart, trendChart;
+
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function calculate(){
+  const month = document.getElementById("month").value;
+  const year = parseInt(document.getElementById("year").value);
+  const mode = parseFloat(document.getElementById("mode").value);
+  let distance = parseFloat(document.getElementById("distance").value);
+  let electricity = parseFloat(document.getElementById("electricity").value);
+  const errorBox = document.getElementById("error"); 
+  errorBox.innerHTML="";
+
+  if(!month || !year || !mode || isNaN(distance) || isNaN(electricity)){
+    errorBox.innerHTML="All fields required and must be numeric.";
+    return;
+  }
+
+  const currentYear = new Date().getFullYear();
+  if (year > currentYear) {
+      errorBox.innerHTML = `❌ Year cannot be in the future. Current year is ${currentYear}.`;
+      return;
+  }
+
+  if(distance<0 || electricity<0){ 
+      errorBox.innerHTML="Values cannot be negative."; 
+      return; 
+  }
+
+  let transport = distance * mode;
+  let electric = electricity * 0.82;
+  let total = transport + electric;
+  previousTotal = total;
+
+  let category="", className="";
+  if(total<100){ category="Low (Green)"; className="green"; }
+  else if(total<=300){ category="Moderate (Orange)"; className="orange"; }
+  else{ category="High (Red)"; className="red"; }
+
+  document.getElementById("resultCard").className="result-card "+className;
+  document.getElementById("resultCard").innerHTML=
+    `Total CO₂: ${total.toFixed(2)} kg<br>Category: ${category}<br>National Avg: 150 kg<br>Global Avg: 200 kg`;
+
+  let trees=Math.ceil(total/20);
+  let suggestionText=`🌱 Plant ${trees} trees to offset this emission.<br>`;
+  suggestionText+= transport>electric ? "🚗 Consider biking, carpooling, or using public transport.<br>"
+                                     : "⚡ Use energy-efficient appliances and switch off unused devices.<br>";
+  if(total>300) suggestionText+="🔥 High emission! Reduce flights, install solar panels if possible.";
+  document.getElementById("suggestions").innerHTML=suggestionText;
+
+  let history=JSON.parse(localStorage.getItem("ecoHistory"))||[];
+  history.push({month,year,total});
+  localStorage.setItem("ecoHistory",JSON.stringify(history));
+
+  createChart(transport,electric);
+  createTrendChart(history);
+
+  // Generate shareable link
+  const currentURL = window.location.href.split('?')[0];
+  document.getElementById("shareableLink").value = `${currentURL}?userCO2=${total.toFixed(2)}`;
+
+  showScreen('resultScreen');
+}
+
+function createChart(t,e){
+  const ctx=document.getElementById("chart");
+  if(chart) chart.destroy();
+  chart=new Chart(ctx,{
+    type:'bar',
+    data:{ labels:['Transport','Electricity'], datasets:[{label:'CO₂ Emissions (kg)', data:[t,e], backgroundColor:['#43cea2','#185a9d']}] }
+  });
+}
+
+function createTrendChart(history){
+  const ctx=document.getElementById("trendChart");
+  if(trendChart) trendChart.destroy();
+  trendChart=new Chart(ctx,{
+    type:'line',
+    data:{ labels: history.map(h=>`${h.month}-${h.year}`), datasets:[{label:'Monthly CO₂', data: history.map(h=>h.total), borderColor:'#43cea2', fill:false, tension:0.4}] }
+  });
+}
+
+function downloadReport(){
+  const { jsPDF } = window.jspdf;
+  html2canvas(document.getElementById('reportContent')).then(canvas=>{
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF();
+    const imgProps = pdf.getImageProperties(imgData);
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+    pdf.addImage(imgData,'PNG',0,0,pdfWidth,pdfHeight);
+    pdf.save('EcoTrack_Report.pdf');
+  });
+}
+
+function compareWithFriend(){
+  const friendCO2 = parseFloat(document.getElementById("friendCO2").value);
+  const urlParams = new URLSearchParams(window.location.search);
+  const userCO2 = parseFloat(urlParams.get('userCO2') || previousTotal);
+  if(isNaN(friendCO2)){ alert("Enter valid number"); return; }
+  let compareText="";
+  if(userCO2<friendCO2) compareText="🎉 You have lower CO₂ than your friend!";
+  else if(userCO2>friendCO2) compareText="⚠ Your friend has lower CO₂!";
+  else compareText="🤝 You and your friend have the same CO₂ footprint!";
+  document.getElementById("compareResult").innerText = compareText;
+}
+
+// Auto-fill shared link if userCO2 in URL
+window.onload = function(){
+  const urlParams = new URLSearchParams(window.location.search);
+  const userCO2 = parseFloat(urlParams.get('userCO2'));
+  if(userCO2){
+    previousTotal = userCO2;
+    showScreen('compareScreen');
+    document.getElementById("shareableLink").value = window.location.href;
+  }
+};
+</script>
+
+</body>
+</html>
